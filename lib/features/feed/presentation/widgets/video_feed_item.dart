@@ -1,7 +1,10 @@
 // ignore_for_file: unnecessary_underscores
 
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../domain/entities/video_post.dart';
@@ -18,6 +21,7 @@ class VideoFeedItem extends StatefulWidget {
     required this.onToggleMute,
     required this.onLikeTap,
     required this.onDoubleTapLike,
+    this.onPlayPauseToggled,
     required this.onRetry,
     this.onCommentTap,
     this.onShareTap,
@@ -37,6 +41,12 @@ class VideoFeedItem extends StatefulWidget {
   final VoidCallback onToggleMute;
   final VoidCallback onLikeTap;
   final VoidCallback onDoubleTapLike;
+
+  /// Fired whenever the user manually starts/stops playback through the
+  /// gesture layer or control row (tap, play/pause button, hold-for-2x).
+  /// Lets the feed screen remember a deliberate pause so automatic
+  /// resumes (app foregrounding, sheet dismissal) respect it.
+  final ValueChanged<bool>? onPlayPauseToggled;
   final VoidCallback onRetry;
   final VoidCallback? onCommentTap;
   final VoidCallback? onShareTap;
@@ -50,6 +60,32 @@ class VideoFeedItem extends StatefulWidget {
 
 class _VideoFeedItemState extends State<VideoFeedItem>
     with SingleTickerProviderStateMixin {
+  // ---------- Playback controls ----------
+  static const int _skipSeconds = 5;
+  static const double _fastForwardSpeed = 2.0;
+  static const Duration _seekFeedbackVisibleFor =
+      Duration(milliseconds: 700);
+
+  // Hold-screen-for-2x state.
+  bool _isHoldingFast = false;
+  bool _wasPlayingBeforeHold = false;
+  double _speedBeforeHold = 1.0;
+
+  // Sequential-seeking bookkeeping: position lags behind issued seeks, so
+  // base follow-up skips on the last requested target instead. Null once
+  // the latest seek lands.
+  Duration? _pendingSeekTarget;
+
+  // Transient "±5s" feedback chip shown after a skip.
+  Timer? _seekFeedbackTimer;
+  int? _seekFeedbackSeconds;
+
+  // Mirrored controller flags so we only rebuild the overlay layer when
+  // something visible actually changed (the listener fires often).
+  bool? _cachedIsPlaying;
+  bool? _cachedIsBuffering;
+  bool? _cachedHasError;
+
   late final AnimationController _heartAnim;
   bool _showHeartPop = false;
 
@@ -60,10 +96,63 @@ class _VideoFeedItemState extends State<VideoFeedItem>
       vsync: this,
       duration: const Duration(milliseconds: 500),
     );
+    widget.controller?.addListener(_onControllerTick);
+  }
+
+  @override
+  void didUpdateWidget(covariant VideoFeedItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.controller, widget.controller)) {
+      try {
+        oldWidget.controller?.removeListener(_onControllerTick);
+      } catch (_) {
+        // Old controller may already be disposed by the feed cache.
+      }
+      widget.controller?.addListener(_onControllerTick);
+      // A fresh controller doesn't carry over an in-progress hold.
+      _isHoldingFast = false;
+      _pendingSeekTarget = null;
+      _seekFeedbackTimer?.cancel();
+      _seekFeedbackSeconds = null;
+    }
+  }
+
+  /// Keeps the overlay layer (center play arrow, control-row icon) honest
+  /// about playback state regardless of who moved it: user taps, autoplay
+  /// on ready, app backgrounding, or buffering churn.
+  void _onControllerTick() {
+    if (!mounted) return;
+    final controller = widget.controller;
+    if (controller == null || !controller.value.isInitialized) return;
+    final value = controller.value;
+    if (value.isPlaying != _cachedIsPlaying ||
+        value.isBuffering != _cachedIsBuffering ||
+        value.hasError != _cachedHasError) {
+      setState(() {
+        _cachedIsPlaying = value.isPlaying;
+        _cachedIsBuffering = value.isBuffering;
+        _cachedHasError = value.hasError;
+      });
+    }
   }
 
   @override
   void dispose() {
+    _seekFeedbackTimer?.cancel();
+    // Restore anything an in-flight hold changed — e.g. the item scrolled
+    // away and unmounted mid-hold — best effort, since the controller may
+    // already be disposed by the feed's controller cache.
+    if (_isHoldingFast) {
+      final controller = widget.controller;
+      try {
+        controller?.setPlaybackSpeed(_speedBeforeHold);
+        if (!_wasPlayingBeforeHold) controller?.pause();
+      } catch (_) {}
+      _isHoldingFast = false;
+    }
+    try {
+      widget.controller?.removeListener(_onControllerTick);
+    } catch (_) {}
     _heartAnim.dispose();
     super.dispose();
   }
@@ -76,11 +165,102 @@ class _VideoFeedItemState extends State<VideoFeedItem>
     });
   }
 
-  void _handleTap() {
+  /// Single tap anywhere on the video toggles between paused and playing.
+  /// Pausing stops playback completely until the user plays again — that
+  /// paused intent is reported upstream so automatic resumes honor it.
+  void _handleTogglePlayPause() {
     final controller = widget.controller;
     if (controller == null || !controller.value.isInitialized) return;
-    controller.value.isPlaying ? controller.pause() : controller.play();
+    if (_isHoldingFast) return; // an in-progress hold owns the transport
+
+    final willPlay = !controller.value.isPlaying;
+    if (willPlay) {
+      controller.setPlaybackSpeed(1.0);
+      controller.play();
+    } else {
+      controller.pause();
+    }
     setState(() {});
+    widget.onPlayPauseToggled?.call(willPlay);
+  }
+
+  /// Press-and-hold anywhere on the screen: play at 2x speed. On release,
+  /// restore exactly what was happening before (previous speed, and back
+  /// to paused if the video had been paused).
+  void _handleHoldStart(LongPressStartDetails _) {
+    final controller = widget.controller;
+    if (controller == null || !controller.value.isInitialized) return;
+
+    _wasPlayingBeforeHold = controller.value.isPlaying;
+    _speedBeforeHold = controller.value.playbackSpeed == _fastForwardSpeed
+        ? 1.0
+        : controller.value.playbackSpeed;
+    _isHoldingFast = true;
+
+    HapticFeedback.mediumImpact();
+    controller.setPlaybackSpeed(_fastForwardSpeed);
+    if (!_wasPlayingBeforeHold) controller.play();
+    setState(() {});
+    if (!_wasPlayingBeforeHold) widget.onPlayPauseToggled?.call(true);
+  }
+
+  void _handleHoldEnd(LongPressEndDetails _) => _endFastHold();
+
+  void _handleHoldCancel() => _endFastHold();
+
+  void _endFastHold() {
+    if (!_isHoldingFast) return;
+    _isHoldingFast = false;
+
+    final controller = widget.controller;
+    if (controller != null &&
+        controller.value.isInitialized &&
+        !controller.value.hasError) {
+      controller.setPlaybackSpeed(_speedBeforeHold);
+      if (!_wasPlayingBeforeHold) {
+        controller.pause();
+        widget.onPlayPauseToggled?.call(false);
+      }
+    }
+    setState(() {});
+  }
+
+  /// Skips forward/backward by [_skipSeconds]. Rapid taps accumulate off
+  /// the last requested target because the reported position lags behind
+  /// issued seeks.
+  Future<void> _handleSkip(int seconds) async {
+    final controller = widget.controller;
+    if (controller == null || !controller.value.isInitialized) return;
+    final duration = controller.value.duration;
+    if (duration <= Duration.zero) return;
+
+    final base = _pendingSeekTarget ?? controller.value.position;
+    var target = base + Duration(seconds: seconds);
+    if (target < Duration.zero) target = Duration.zero;
+    if (target >= duration) {
+      target = duration - const Duration(milliseconds: 50);
+    }
+
+    _pendingSeekTarget = target;
+    HapticFeedback.selectionClick();
+    try {
+      await controller.seekTo(target);
+    } catch (_) {
+      // Item may have been torn down mid-seek.
+    }
+    if (_pendingSeekTarget == target) _pendingSeekTarget = null;
+
+    _flashSeekFeedback(seconds);
+  }
+
+  /// Briefly flashes a "±Ns" chip so the skip is visible feedback.
+  void _flashSeekFeedback(int seconds) {
+    _seekFeedbackTimer?.cancel();
+    setState(() => _seekFeedbackSeconds = seconds);
+    _seekFeedbackTimer = Timer(_seekFeedbackVisibleFor, () {
+      if (!mounted) return;
+      setState(() => _seekFeedbackSeconds = null);
+    });
   }
 
   @override
@@ -90,8 +270,12 @@ class _VideoFeedItemState extends State<VideoFeedItem>
     final hasError = controller != null && controller.value.hasError;
 
     return GestureDetector(
-      onTap: _handleTap,
+      onTap: _handleTogglePlayPause,
       onDoubleTap: _handleDoubleTap,
+      // Hold anywhere on the screen: play at 2x until released.
+      onLongPressStart: _handleHoldStart,
+      onLongPressEnd: _handleHoldEnd,
+      onLongPressCancel: _handleHoldCancel,
       behavior: HitTestBehavior.deferToChild,
       child: Container(
         height: MediaQuery.of(context).size.height * 0.9,
@@ -166,6 +350,21 @@ class _VideoFeedItemState extends State<VideoFeedItem>
                 ),
               ),
 
+            // Hold-for-2x badge
+            if (_isHoldingFast) _buildSpeedBadge(),
+
+            // Transient ±5s skip feedback chip
+            if (_seekFeedbackSeconds != null) _buildSeekFlashChip(),
+
+            // Control row: skip back 5s / play-pause / skip forward 5s
+            if (ready && !hasError)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 130,
+                child: Center(child: _buildControlPill()),
+              ),
+
             // Mute toggle
             Positioned(
               top: 8,
@@ -224,6 +423,116 @@ class _VideoFeedItemState extends State<VideoFeedItem>
                   ),
                 ),
               ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ---------- Overlay widgets ----------
+
+  Widget _buildControlPill() {
+    final controller = widget.controller;
+    final isPlaying = _isHoldingFast || (controller?.value.isPlaying ?? false);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(30),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            tooltip: 'Back $_skipSeconds seconds',
+            onPressed: () => _handleSkip(-_skipSeconds),
+            icon: const Icon(Icons.replay_5_rounded,
+                color: Colors.white, size: 26),
+          ),
+          const SizedBox(width: 12),
+          IconButton(
+            tooltip: isPlaying ? 'Pause' : 'Play',
+            onPressed: _handleTogglePlayPause,
+            icon: Icon(
+              isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+              color: Colors.white,
+              size: 34,
+            ),
+          ),
+          const SizedBox(width: 12),
+          IconButton(
+            tooltip: 'Forward $_skipSeconds seconds',
+            onPressed: () => _handleSkip(_skipSeconds),
+            icon: const Icon(Icons.forward_5_rounded,
+                color: Colors.white, size: 26),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSpeedBadge() {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Center(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.55),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.fast_forward_rounded,
+                    color: Colors.white, size: 20),
+                SizedBox(width: 6),
+                Text(
+                  '2x',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSeekFlashChip() {
+    final seconds = _seekFeedbackSeconds!;
+    final isBackward = seconds < 0;
+    return Center(
+      child: Container(
+        key: ValueKey<int>(seconds),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.55),
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isBackward ? Icons.replay_5_rounded : Icons.forward_5_rounded,
+              color: Colors.white,
+              size: 26,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '${isBackward ? '-' : '+'}${seconds.abs()}s',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 16,
+              ),
+            ),
           ],
         ),
       ),

@@ -33,6 +33,12 @@ class _HomeFeedScreenState extends ConsumerState<HomeFeedScreen>
   int _currentIndex = 0;
   bool _isMuted = false;
   bool _appInBackground = false;
+
+  /// True while the current video is deliberately paused by the user
+  /// (tap, control-row button, or hold-release restoring a pause).
+  /// Automatic resumes (app foregrounding, sheet dismissal) must not
+  /// override it — the video stays stopped until the user plays again.
+  bool _pausedByUser = false;
   Timer? _viewTimer;
   String? _viewRecordedFor;
 
@@ -51,7 +57,10 @@ class _HomeFeedScreenState extends ConsumerState<HomeFeedScreen>
     if (_appInBackground && !wasInBackground) {
       _controllerCache.controllerAt(_currentIndex)?.pause();
     } else if (!_appInBackground && wasInBackground) {
-      _controllerCache.controllerAt(_currentIndex)?.play();
+      // Don't force-resume if the user had deliberately paused this video.
+      if (!_pausedByUser) {
+        _controllerCache.controllerAt(_currentIndex)?.play();
+      }
     }
   }
 
@@ -79,7 +88,12 @@ class _HomeFeedScreenState extends ConsumerState<HomeFeedScreen>
   }
 
   void _onPageChanged(int index, int videoCount) {
-    setState(() => _currentIndex = index);
+    setState(() {
+      _currentIndex = index;
+      // A fresh page starts playing on its own; any previous deliberate
+      // pause applied to a different video.
+      _pausedByUser = false;
+    });
     _viewTimer?.cancel();
 
     // Controller strategy from spec §7/§30: only previous/current/next
@@ -174,6 +188,12 @@ class _HomeFeedScreenState extends ConsumerState<HomeFeedScreen>
                       isActive: index == _currentIndex,
                       isMuted: _isMuted,
                       onToggleMute: _toggleMute,
+                      // Track deliberate play/pause so auto-resume paths
+                      // (lifecycle, sheet close) respect the user's choice.
+                      onPlayPauseToggled: (playing) {
+                        if (index != _currentIndex) return;
+                        setState(() => _pausedByUser = !playing);
+                      },
                       onLikeTap: () => _handleLikeTap(post.id),
                       onDoubleTapLike: () => _handleLikeTap(post.id),
                       onRetry: () {
@@ -251,7 +271,7 @@ class _HomeFeedScreenState extends ConsumerState<HomeFeedScreen>
         ),
       ),
     ).whenComplete(() {
-      if (mounted && !_appInBackground) {
+      if (mounted && !_appInBackground && !_pausedByUser) {
         _controllerCache.controllerAt(_currentIndex)?.play();
       }
     });
