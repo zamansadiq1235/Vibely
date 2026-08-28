@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/extensions/context_extensions.dart';
+import '../../../../core/theme/app_colors.dart';
 import '../../domain/entities/comment.dart';
 
 class CommentTile extends StatelessWidget {
@@ -107,7 +108,7 @@ class CommentTile extends StatelessWidget {
                       : Icons.favorite_border_rounded,
                   size: 18,
                   color: comment.isLikedByMe
-                      ? Colors.pinkAccent
+                      ? AppColors.secondaryAccent
                       : context.colors.outline,
                 ),
               ),

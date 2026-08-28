@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/errors/app_exception.dart';
 import '../../../../shared/services/progress_upload_client.dart';
+import '../../domain/entities/music_track.dart';
 import '../../domain/entities/upload_draft.dart';
 
 class UploadRemoteDataSource {
@@ -70,7 +71,11 @@ class UploadRemoteDataSource {
         );
       }
 
-      // 3) Insert the videos row (0.97-1.0).
+      // 3) Insert the videos row (0.97-1.0). Editing-mode extras ride
+      // along: the color-grade preset picked in the Filter step (null =
+      // original) and background-music metadata from the Music step —
+      // the actual audio mixing is a later server-side job, mirroring how
+      // trimStart/trimEnd persist now and act later.
       final row = await _client
           .from('videos')
           .insert({
@@ -79,6 +84,8 @@ class UploadRemoteDataSource {
             'thumbnail_path': thumbnailPath,
             'caption': draft.caption,
             'visibility': draft.privacy.dbValue,
+            'filter_preset': _nonNull(draft.filterPresetId),
+            ..._musicMetadata(draft.musicTrack),
           })
           .select('id')
           .single();
@@ -121,6 +128,20 @@ class UploadRemoteDataSource {
   }
 
   void cancel() => _activeUploader?.cancel();
+
+  /// 'none' vs null: keep the no-filter case an explicit value so
+  /// "user chose Original" is distinguishable from "pre-dates editing".
+  String? _nonNull(String? value) =>
+      (value == null || value.isEmpty) ? null : value;
+
+  Map<String, dynamic> _musicMetadata(MusicTrack? track) {
+    if (track == null) return {};
+    return {
+      'music_title': track.title,
+      'music_artist': track.artist,
+      'music_url': _nonNull(track.previewUrl),
+    };
+  }
 
   String _generateUuid() {
     // Lightweight v4-ish UUID without an extra package dependency —

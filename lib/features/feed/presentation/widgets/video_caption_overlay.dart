@@ -23,6 +23,33 @@ class VideoCaptionOverlay extends StatelessWidget {
             shadows: shadow,
           ),
         ),
+        if (post.musicTitle != null) ...[
+          const SizedBox(height: 6),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.music_note_rounded,
+                color: Colors.white70,
+                size: 13,
+                shadows: shadow,
+              ),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  post.musicTitle!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12.5,
+                    shadows: shadow,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
         if (post.caption.isNotEmpty) ...[
           const SizedBox(height: 6),
           Text(

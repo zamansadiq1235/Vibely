@@ -9,6 +9,7 @@ class AppColors {
   static const Color primaryDark = Color(0xFF4834D4);
   static const Color accent = Color(0xFF00D2C6); // aqua accent
   static const Color secondaryAccent = Color(0xFFFF6B9D); // warm pink for likes
+  static const Color bookmarkGold = Color(0xFFFFC94D); // saved-video highlight
 
   static const Color darkBackground = Color(0xFF0F0F14);
   static const Color darkSurface = Color(0xFF1A1A22);

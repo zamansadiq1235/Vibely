@@ -49,6 +49,10 @@ class NotificationsRepositoryImpl implements NotificationsRepository {
   Future<void> markAllAsRead() => _dataSource.markAllAsRead();
 
   @override
+  Future<void> deleteNotifications(List<String> ids) =>
+      _dataSource.deleteNotifications(ids);
+
+  @override
   Future<void Function()> subscribeToNew(
     void Function() onNewNotification,
   ) async {

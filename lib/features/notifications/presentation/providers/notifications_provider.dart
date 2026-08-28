@@ -30,21 +30,32 @@ class NotificationsState {
     required this.items,
     required this.hasMore,
     required this.unreadCount,
+    this.selectedIds = const {},
   });
 
   final List<NotificationItem> items;
   final bool hasMore;
   final int unreadCount;
 
+  /// Ids picked by the user in selection (long-press) mode. Selection
+  /// lives here — not in a separate widget's setState — so the AppBar
+  /// actions, tile checkmarks and the delete mutation all derive from
+  /// one source of truth and survive rebuilds/scrolling.
+  final Set<String> selectedIds;
+
+  bool get isSelectionMode => selectedIds.isNotEmpty;
+
   NotificationsState copyWith({
     List<NotificationItem>? items,
     bool? hasMore,
     int? unreadCount,
+    Set<String>? selectedIds,
   }) {
     return NotificationsState(
       items: items ?? this.items,
       hasMore: hasMore ?? this.hasMore,
       unreadCount: unreadCount ?? this.unreadCount,
+      selectedIds: selectedIds ?? this.selectedIds,
     );
   }
 }
@@ -183,6 +194,82 @@ class NotificationsNotifier extends AsyncNotifier<NotificationsState> {
     try {
       await ref.read(notificationsRepositoryProvider).markAllAsRead();
     } catch (_) {}
+  }
+
+  // ---------- Selection & delete ----------
+
+  /// Long-press on a tile enters selection mode with that item pre-picked.
+  void enterSelectionMode(String notificationId) {
+    final current = state.asData?.value;
+    if (current == null || current.isSelectionMode) return;
+    state = AsyncData(
+      current.copyWith(selectedIds: {notificationId}),
+    );
+  }
+
+  void toggleSelection(String notificationId) {
+    final current = state.asData?.value;
+    if (current == null) return;
+    final updated = {...current.selectedIds};
+    if (!updated.remove(notificationId)) updated.add(notificationId);
+    // Last item unchecked leaves selection mode entirely.
+    state = AsyncData(current.copyWith(selectedIds: updated));
+  }
+
+  void selectAll() {
+    final current = state.asData?.value;
+    if (current == null) return;
+    state = AsyncData(
+      current.copyWith(
+        selectedIds: {for (final n in current.items) n.id},
+      ),
+    );
+  }
+
+  void exitSelectionMode() {
+    final current = state.asData?.value;
+    if (current == null || !current.isSelectionMode) return;
+    state = AsyncData(current.copyWith(selectedIds: {}));
+  }
+
+  /// Optimistically removes the selected rows, persists the delete, and
+  /// restores them at their original positions if the write fails.
+  Future<bool> deleteSelected() async {
+    final current = state.asData?.value;
+    if (current == null || !current.isSelectionMode) return false;
+
+    final ids = current.selectedIds.toList();
+    final removedUnread = current.items
+        .where((n) => ids.contains(n.id) && !n.isRead)
+        .length;
+    final remainingUnread = current.unreadCount - removedUnread;
+
+    // Snapshot positions for exact-order rollback.
+    final rollbackItems = List.of(current.items);
+    state = AsyncData(
+      current.copyWith(
+        items:
+            current.items.where((n) => !ids.contains(n.id)).toList(),
+        unreadCount: remainingUnread < 0 ? 0 : remainingUnread,
+        selectedIds: {},
+      ),
+    );
+
+    try {
+      await ref.read(notificationsRepositoryProvider).deleteNotifications(ids);
+      return true;
+    } catch (_) {
+      // Roll back to what the user saw, selection restored too so they
+      // can retry without re-picking everything.
+      final previous = NotificationsState(
+        items: rollbackItems,
+        hasMore: current.hasMore,
+        unreadCount: current.unreadCount,
+        selectedIds: {for (final id in ids) id},
+      );
+      state = AsyncData(previous);
+      rethrow;
+    }
   }
 }
 

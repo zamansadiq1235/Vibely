@@ -1,5 +1,8 @@
 import 'dart:io';
 
+import 'music_track.dart';
+import 'video_filter_preset.dart';
+
 enum VideoPrivacy { public, friends, private }
 
 extension VideoPrivacyX on VideoPrivacy {
@@ -16,10 +19,10 @@ extension VideoPrivacyX on VideoPrivacy {
   };
 }
 
-/// Everything collected across the Create -> Preview -> Thumbnail ->
-/// Caption -> Privacy steps (spec §17), held in one place so each step
-/// screen just reads/writes fields on this rather than passing a dozen
-/// separate arguments around.
+/// Everything collected across the Create -> Edit -> Music -> Preview ->
+/// Thumbnail -> Caption -> Privacy steps (spec §17), held in one place so
+/// each step screen just reads/writes fields on this rather than passing
+/// a dozen separate arguments around.
 class UploadDraft {
   UploadDraft({
     this.videoFile,
@@ -28,6 +31,8 @@ class UploadDraft {
     this.privacy = VideoPrivacy.public,
     this.trimStart = Duration.zero,
     this.trimEnd,
+    this.filterPresetId = VideoFilterPreset.noneId,
+    this.musicTrackId,
   });
 
   final File? videoFile;
@@ -45,12 +50,28 @@ class UploadDraft {
   final Duration trimStart;
   final Duration? trimEnd;
 
+  /// Color-grade chosen in the editor's Filter step. Persisted by id and
+  /// re-applied at playback time via [VideoFilterPreset.byId].
+  final String filterPresetId;
+
+  VideoFilterPreset get filterPreset =>
+      VideoFilterPreset.byId(filterPresetId) ?? VideoFilterPreset.none;
+
+  /// Library track picked for background music, or null for original
+  /// audio only. Metadata-only persistence — mixing happens server-side
+  /// (same phase-deferral rationale as trim).
+  final String? musicTrackId;
+
+  MusicTrack? get musicTrack => MusicTrack.byId(musicTrackId);
+
   /// Hashtags parsed live from [caption] rather than a separate field —
   /// matches how TikTok/Reels-style composers work (spec §17, §19).
   List<String> get hashtags {
     final matches = RegExp(r'#(\w+)').allMatches(caption);
     return matches.map((m) => m.group(1)!.toLowerCase()).toSet().toList();
   }
+
+  bool get hasMusic => musicTrackId != null;
 
   UploadDraft copyWith({
     File? videoFile,
@@ -60,6 +81,9 @@ class UploadDraft {
     VideoPrivacy? privacy,
     Duration? trimStart,
     Duration? trimEnd,
+    String? filterPresetId,
+    bool clearMusic = false,
+    String? musicTrackId,
   }) {
     return UploadDraft(
       videoFile: videoFile ?? this.videoFile,
@@ -70,6 +94,8 @@ class UploadDraft {
       privacy: privacy ?? this.privacy,
       trimStart: trimStart ?? this.trimStart,
       trimEnd: trimEnd ?? this.trimEnd,
+      filterPresetId: filterPresetId ?? this.filterPresetId,
+      musicTrackId: clearMusic ? null : (musicTrackId ?? this.musicTrackId),
     );
   }
 }

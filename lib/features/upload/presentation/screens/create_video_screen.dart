@@ -4,21 +4,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/extensions/context_extensions.dart';
-import '../../../feed/domain/entities/video_post.dart';
 import '../../domain/entities/upload_state.dart';
 import '../providers/upload_provider.dart';
 import '../widgets/caption_step.dart';
+import '../widgets/filter_step.dart';
+import '../widgets/music_step.dart';
 import '../widgets/preview_trim_step.dart';
+import '../widgets/thumbnail_step.dart';
 import '../widgets/privacy_step.dart';
-import '../widgets/select_thumbnail_step.dart';
 import '../widgets/select_video_step.dart';
 import '../widgets/upload_progress_overlay.dart';
 
-/// Implements the Create -> Gallery/Camera -> Preview -> Trim -> Thumbnail
-/// -> Caption -> Hashtags -> Privacy -> Upload -> Publish flow (spec §17)
-/// as a single wizard with an internal step index, backed by
-/// uploadDraftProvider so state survives moving back and forth between
-/// steps without extra navigation plumbing.
+/// Implements the Create -> Gallery/Camera -> Edit (filters) -> Music ->
+/// Preview -> Trim -> Thumbnail -> Caption -> Hashtags -> Privacy ->
+/// Upload -> Publish flow (spec §17) as a single wizard with an internal
+/// step index, backed by uploadDraftProvider so state survives moving
+/// back and forth between steps without extra navigation plumbing.
 class CreateVideoScreen extends ConsumerStatefulWidget {
   const CreateVideoScreen({super.key});
 
@@ -29,7 +30,7 @@ class CreateVideoScreen extends ConsumerStatefulWidget {
 class _CreateVideoScreenState extends ConsumerState<CreateVideoScreen> {
   int _step = 0;
   static const _stepCount =
-      5; // select, preview/trim, thumbnail, caption, privacy
+      7; // select, edit/filters, music, preview/trim, thumbnail, caption, privacy
 
   void _next() {
     if (_step < _stepCount - 1) {
@@ -104,17 +105,21 @@ class _CreateVideoScreenState extends ConsumerState<CreateVideoScreen> {
 
   String _titleFor(int step) => switch (step) {
     0 => 'Create',
-    1 => 'Preview',
-    2 => 'Thumbnail',
-    3 => 'Caption',
+    1 => 'Edit filters',
+    2 => 'Add music',
+    3 => 'Preview',
+    4 => 'Thumbnail',
+    5 => 'Caption',
     _ => 'Privacy',
   };
 
   Widget _bodyFor(int step) => switch (step) {
     0 => SelectVideoStep(onSelected: () => setState(() => _step = 1)),
-    1 => const PreviewTrimStep(),
-    2 =>  VideoThumbnailGrid(videos: [], onTap: (VideoPost p1) {  },),
-    3 => const CaptionStep(),
+    1 => const FilterStep(),
+    2 => const MusicStep(),
+    3 => const PreviewTrimStep(),
+    4 => const ThumbnailStep(),
+    5 => const CaptionStep(),
     _ => const PrivacyStep(),
   };
 }

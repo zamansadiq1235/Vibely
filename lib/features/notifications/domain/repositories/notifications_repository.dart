@@ -8,6 +8,10 @@ abstract class NotificationsRepository {
   Future<void> markAsRead(String notificationId);
   Future<void> markAllAsRead();
 
+  /// Permanently deletes the given notifications belonging to the
+  /// current user.
+  Future<void> deleteNotifications(List<String> ids);
+
   /// Subscribes to new notification rows for the current user via
   /// Supabase Realtime (spec §26: "Use Supabase Realtime where
   /// appropriate"). Returns an unsubscribe function.

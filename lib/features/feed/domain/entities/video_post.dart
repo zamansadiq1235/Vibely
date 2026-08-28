@@ -19,6 +19,9 @@ class VideoPost {
     required this.isLikedByMe,
     this.isSavedByMe = false,
     this.isRepostedByMe = false,
+    this.filterPresetId,
+    this.musicTitle,
+    this.musicUrl,
     required this.createdAt,
   });
 
@@ -44,6 +47,15 @@ class VideoPost {
 
   final bool isSavedByMe;
   final bool isRepostedByMe;
+
+  /// Editing-mode extras from upload time. [filterPresetId] references a
+  /// VideoFilterPreset (upload feature) and is re-applied over the video
+  /// while it plays; null/unknown ids render unfiltered. [musicTitle] /
+  /// [musicUrl] surface the background track chosen in the composer's
+  /// Music step — the feed layer streams [musicUrl] alongside playback.
+  final String? filterPresetId;
+  final String? musicTitle;
+  final String? musicUrl;
 
   final DateTime createdAt;
 

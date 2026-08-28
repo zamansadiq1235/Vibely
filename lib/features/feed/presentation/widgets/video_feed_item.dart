@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../domain/entities/video_post.dart';
+import '../../../upload/domain/entities/video_filter_preset.dart';
 import 'video_action_bar.dart';
 import 'video_caption_overlay.dart';
 
@@ -63,8 +64,7 @@ class _VideoFeedItemState extends State<VideoFeedItem>
   // ---------- Playback controls ----------
   static const int _skipSeconds = 5;
   static const double _fastForwardSpeed = 2.0;
-  static const Duration _seekFeedbackVisibleFor =
-      Duration(milliseconds: 700);
+  static const Duration _seekFeedbackVisibleFor = Duration(milliseconds: 700);
 
   // Hold-screen-for-2x state.
   bool _isHoldingFast = false;
@@ -296,7 +296,9 @@ class _VideoFeedItemState extends State<VideoFeedItem>
               Center(
                 child: AspectRatio(
                   aspectRatio: controller.value.aspectRatio,
-                  child: VideoPlayer(controller),
+                  // Re-applies the color-grade picked in the composer's
+                  // Filter step when one was saved on this post.
+                  child: _applyFilter(child: VideoPlayer(controller)),
                 ),
               ),
 
@@ -315,11 +317,36 @@ class _VideoFeedItemState extends State<VideoFeedItem>
             if (ready &&
                 !controller.value.isPlaying &&
                 !controller.value.isBuffering)
-              const Center(
-                child: Icon(
-                  Icons.play_arrow_rounded,
-                  size: 72,
-                  color: Colors.white70,
+              Center(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton(
+                      tooltip: 'Back $_skipSeconds seconds',
+                      onPressed: () => _handleSkip(-_skipSeconds),
+                      icon: const Icon(
+                        Icons.replay_5_rounded,
+                        color: Colors.white,
+                        size: 36,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Icon(
+                      Icons.play_arrow_rounded,
+                      size: 72,
+                      color: Colors.white70,
+                    ),
+                    const SizedBox(width: 12),
+                    IconButton(
+                      tooltip: 'Forward $_skipSeconds seconds',
+                      onPressed: () => _handleSkip(_skipSeconds),
+                      icon: Icon(
+                        Icons.forward_5_rounded,
+                        color: Colors.white,
+                        size: 36,
+                      ),
+                    ),
+                  ],
                 ),
               ),
 
@@ -355,15 +382,6 @@ class _VideoFeedItemState extends State<VideoFeedItem>
 
             // Transient ±5s skip feedback chip
             if (_seekFeedbackSeconds != null) _buildSeekFlashChip(),
-
-            // Control row: skip back 5s / play-pause / skip forward 5s
-            if (ready && !hasError)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 130,
-                child: Center(child: _buildControlPill()),
-              ),
 
             // Mute toggle
             Positioned(
@@ -431,44 +449,16 @@ class _VideoFeedItemState extends State<VideoFeedItem>
 
   // ---------- Overlay widgets ----------
 
-  Widget _buildControlPill() {
-    final controller = widget.controller;
-    final isPlaying = _isHoldingFast || (controller?.value.isPlaying ?? false);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.45),
-        borderRadius: BorderRadius.circular(30),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          IconButton(
-            tooltip: 'Back $_skipSeconds seconds',
-            onPressed: () => _handleSkip(-_skipSeconds),
-            icon: const Icon(Icons.replay_5_rounded,
-                color: Colors.white, size: 26),
-          ),
-          const SizedBox(width: 12),
-          IconButton(
-            tooltip: isPlaying ? 'Pause' : 'Play',
-            onPressed: _handleTogglePlayPause,
-            icon: Icon(
-              isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-              color: Colors.white,
-              size: 34,
-            ),
-          ),
-          const SizedBox(width: 12),
-          IconButton(
-            tooltip: 'Forward $_skipSeconds seconds',
-            onPressed: () => _handleSkip(_skipSeconds),
-            icon: const Icon(Icons.forward_5_rounded,
-                color: Colors.white, size: 26),
-          ),
-        ],
-      ),
+  /// Wraps [child] in the post's saved color-grade matrix when it has
+  /// one; returns the child untouched for original/no-filter uploads.
+  Widget _applyFilter({required Widget child}) {
+    final preset = VideoFilterPreset.byId(widget.post.filterPresetId);
+    if (preset == null || preset.id == VideoFilterPreset.none.id) {
+      return child;
+    }
+    return ColorFiltered(
+      colorFilter: ColorFilter.matrix(preset.matrix),
+      child: child,
     );
   }
 
@@ -486,8 +476,7 @@ class _VideoFeedItemState extends State<VideoFeedItem>
             child: const Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.fast_forward_rounded,
-                    color: Colors.white, size: 20),
+                Icon(Icons.fast_forward_rounded, color: Colors.white, size: 20),
                 SizedBox(width: 6),
                 Text(
                   '2x',

@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/theme/app_colors.dart';
 import '../../domain/entities/video_post.dart';
 
 /// Actions here are display + basic gestures only in this phase. Wiring
@@ -54,7 +55,7 @@ class VideoActionBar extends StatelessWidget {
           icon: post.isLikedByMe
               ? Icons.favorite_rounded
               : Icons.favorite_border_rounded,
-          iconColor: post.isLikedByMe ? Colors.pinkAccent : Colors.white,
+          iconColor: post.isLikedByMe ? AppColors.secondaryAccent : Colors.white,
           label: _formatCount(post.likesCount),
           onTap: onLikeTap,
         ),
@@ -72,7 +73,7 @@ class VideoActionBar extends StatelessWidget {
           icon: post.isSavedByMe
               ? Icons.bookmark_rounded
               : Icons.bookmark_border_rounded,
-          iconColor: post.isSavedByMe ? Colors.amberAccent : Colors.white,
+          iconColor: post.isSavedByMe ? AppColors.bookmarkGold : Colors.white,
           label: _formatCount(post.savesCount),
           onTap: onSaveTap,
         ),

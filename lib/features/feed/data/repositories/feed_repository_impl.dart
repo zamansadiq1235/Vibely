@@ -34,6 +34,9 @@ class FeedRepositoryImpl implements FeedRepository {
         isLikedByMe: flags.liked.contains(row['id']),
         isSavedByMe: flags.saved.contains(row['id']),
         isRepostedByMe: flags.reposted.contains(row['id']),
+        filterPresetId: row['filter_preset'] as String?,
+        musicTitle: row['music_title'] as String?,
+        musicUrl: row['music_url'] as String?,
         createdAt: DateTime.parse(row['created_at'] as String),
       );
     }).toList();

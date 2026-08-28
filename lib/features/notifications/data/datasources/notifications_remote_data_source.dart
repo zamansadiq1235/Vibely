@@ -73,6 +73,26 @@ class NotificationsRemoteDataSource {
     }
   }
 
+  /// Deletes rows owned by the current user (RLS enforces this too — a
+  /// recipient can remove notifications addressed to them, never ones
+  /// addressed to anyone else).
+  Future<void> deleteNotifications(List<String> ids) async {
+    if (ids.isEmpty) return;
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) throw AppException.unauthorized();
+    try {
+      await _client
+          .from('notifications')
+          .delete()
+          .eq('recipient_id', userId)
+          .inFilter('id', ids);
+    } on PostgrestException {
+      throw AppException.unknown('Could not delete selected notifications.');
+    } catch (_) {
+      throw AppException.network();
+    }
+  }
+
   /// One Realtime channel per call, filtered server-side to just this
   /// user's own notifications — every insert (any of the 8 trigger
   /// functions from migration 0004) fires [onInsert]. The caller only
