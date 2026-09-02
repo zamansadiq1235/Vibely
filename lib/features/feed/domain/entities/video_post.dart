@@ -22,6 +22,9 @@ class VideoPost {
     this.filterPresetId,
     this.musicTitle,
     this.musicUrl,
+    this.musicVolume,
+    this.muteOriginalAudio,
+    this.animationPresetId,
     required this.createdAt,
   });
 
@@ -57,6 +60,23 @@ class VideoPost {
   final String? musicTitle;
   final String? musicUrl;
 
+  /// How loud the background track picked in the composer should play
+  /// (0.0-1.0). Null when the post has no music (or pre-dates this
+  /// column), in which case callers default to full volume.
+
+  final double? musicVolume;
+
+  /// When a background track was added with the composer's "mute original
+  /// sound" switch on, the feed silences the video's own audio and plays
+  /// only the track. Null when no explicit choice was saved.
+
+  final bool? muteOriginalAudio;
+
+  /// Motion preset picked in the composer's Edit step — the feed replays the
+  /// transform (zoom, slide, bounce, ...) over the video while it plays.
+
+  final String? animationPresetId;
+
   final DateTime createdAt;
 
   VideoPost copyWith({
@@ -86,6 +106,12 @@ class VideoPost {
       isLikedByMe: isLikedByMe ?? this.isLikedByMe,
       isSavedByMe: isSavedByMe ?? this.isSavedByMe,
       isRepostedByMe: isRepostedByMe ?? this.isRepostedByMe,
+      filterPresetId: filterPresetId,
+      musicTitle: musicTitle,
+      musicUrl: musicUrl,
+      musicVolume: musicVolume,
+      muteOriginalAudio: muteOriginalAudio,
+      animationPresetId: animationPresetId,
       createdAt: createdAt,
     );
   }

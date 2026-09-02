@@ -20,7 +20,8 @@ class NotificationsScreen extends ConsumerWidget {
 
     // In selection mode a tap just toggles the checkbox — navigation is
     // intentionally disabled so users don't teleport mid-selection.
-    if (ref.read(notificationsProvider).asData?.value.isSelectionMode ?? false) {
+    if (ref.read(notificationsProvider).asData?.value.isSelectionMode ??
+        false) {
       notifier.toggleSelection(item.id);
       return;
     }
@@ -43,10 +44,15 @@ class NotificationsScreen extends ConsumerWidget {
             isScrollControlled: true,
             backgroundColor: Colors.transparent,
             builder: (_) => ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(20),
+              ),
               child: Container(
                 color: Theme.of(context).scaffoldBackgroundColor,
-                child: CommentBottomSheet(videoId: item.videoId!, initialCount: 0),
+                child: CommentBottomSheet(
+                  videoId: item.videoId!,
+                  initialCount: 0,
+                ),
               ),
             ),
           );
@@ -63,7 +69,9 @@ class NotificationsScreen extends ConsumerWidget {
         // straight to a liked/reposted video, so these go to the
         // actor's profile — still useful ("who liked/followed/reposted")
         // and consistent with how grid taps elsewhere handle the same gap.
-        context.push(RouteNames.userProfile.replaceFirst(':userId', item.actorId));
+        context.push(
+          RouteNames.userProfile.replaceFirst(':userId', item.actorId),
+        );
         break;
     }
   }
@@ -84,24 +92,7 @@ class NotificationsScreen extends ConsumerWidget {
             ? AppColors.darkSurface
             : AppColors.lightSurface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: AppColors.error.withValues(alpha: 0.14),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.delete_outline_rounded,
-                color: AppColors.error,
-                size: 22,
-              ),
-            ),
-            const SizedBox(width: 12),
-            const Text('Delete notifications?'),
-          ],
-        ),
+        title: const Text('Delete notifications?'),
         content: Text(
           count == 1
               ? 'This notification will be permanently removed.'

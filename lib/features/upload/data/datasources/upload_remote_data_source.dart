@@ -4,7 +4,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/errors/app_exception.dart';
 import '../../../../shared/services/progress_upload_client.dart';
-import '../../domain/entities/music_track.dart';
 import '../../domain/entities/upload_draft.dart';
 
 class UploadRemoteDataSource {
@@ -85,7 +84,8 @@ class UploadRemoteDataSource {
             'caption': draft.caption,
             'visibility': draft.privacy.dbValue,
             'filter_preset': _nonNull(draft.filterPresetId),
-            ..._musicMetadata(draft.musicTrack),
+            ..._musicMetadata(draft),
+            'animation_preset': _nonNull(draft.animationPresetId),
           })
           .select('id')
           .single();
@@ -134,12 +134,15 @@ class UploadRemoteDataSource {
   String? _nonNull(String? value) =>
       (value == null || value.isEmpty) ? null : value;
 
-  Map<String, dynamic> _musicMetadata(MusicTrack? track) {
+  Map<String, dynamic> _musicMetadata(UploadDraft draft) {
+    final track = draft.musicTrack;
     if (track == null) return {};
     return {
       'music_title': track.title,
       'music_artist': track.artist,
       'music_url': _nonNull(track.previewUrl),
+      'music_volume': draft.musicVolume.clamp(0.0, 1.0),
+      'mute_original_audio': draft.muteOriginalAudio,
     };
   }
 

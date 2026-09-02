@@ -13,6 +13,7 @@ class MusicTrack {
     required this.artist,
     required this.genre,
     this.previewUrl,
+    this.thumbnailUrl,
   });
 
   final String id;
@@ -25,6 +26,10 @@ class MusicTrack {
   /// Directly streamable audio URL used for in-editor preview. Null
   /// renders the track as metadata-only (no preview available).
   final String? previewUrl;
+
+  /// Optional cover artwork. Curated library tracks ride on their gradient
+  /// artwork instead; the real-time MusicAPI search results carry one.
+final String? thumbnailUrl;
 
   static const all = [
     lobelia,

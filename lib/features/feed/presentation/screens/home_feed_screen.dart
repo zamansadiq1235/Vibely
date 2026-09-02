@@ -56,10 +56,12 @@ class _HomeFeedScreenState extends ConsumerState<HomeFeedScreen>
     _appInBackground = state != AppLifecycleState.resumed;
     if (_appInBackground && !wasInBackground) {
       _controllerCache.controllerAt(_currentIndex)?.pause();
+      _controllerCache.pauseMusic(_currentIndex);
     } else if (!_appInBackground && wasInBackground) {
       // Don't force-resume if the user had deliberately paused this video.
       if (!_pausedByUser) {
         _controllerCache.controllerAt(_currentIndex)?.play();
+        _controllerCache.playMusic(_currentIndex);
       }
     }
   }
@@ -109,6 +111,7 @@ class _HomeFeedScreenState extends ConsumerState<HomeFeedScreen>
     if (current != null && current.value.isInitialized) {
       current.play();
     }
+    _controllerCache.playMusic(index);
 
     // Fetch more once the user is within 3 videos of the loaded end.
     if (index >= videoCount - 3) {
@@ -116,16 +119,29 @@ class _HomeFeedScreenState extends ConsumerState<HomeFeedScreen>
     }
   }
 
-  void _ensureControllersAround(int index, List videos) {
-    for (var i = index - 1; i <= index + AppConstants.preloadWindow; i++) {
+  void _ensureControllersAround(int index, List<VideoPost> videos) {
+    for (var i = index -  1; i <= index + AppConstants.preloadWindow; i++) {
       if (i < 0 || i >= videos.length) continue;
+      final post = videos[i];
       if (_controllerCache.controllerAt(i) == null) {
-        _controllerCache.ensure(i, videos[i].videoUrl).then((controller) {
+        _controllerCache.ensure(i, post.videoUrl).then((controller) {
           if (!mounted) return;
+          controller.setVolume(_isMuted
+              ? 0
+              : (post.muteOriginalAudio == true && post.musicUrl != null ? 0 : 1));
           if (i == _currentIndex && !_appInBackground) {
             controller.play();
           }
-          controller.setVolume(_isMuted ? 0 : 1);
+          setState(() {});
+        });
+      }
+      final musicUrl = post.musicUrl;
+      if (musicUrl != null && _controllerCache.musicControllerAt(i) == null) {
+        _controllerCache.ensureMusic(i, musicUrl, volume: _isMuted ? 0 : (post.musicVolume ?? 1)).then((_) {
+          if (!mounted) return;
+          if (i == _currentIndex && !_appInBackground) {
+            _controllerCache.playMusic(i);
+          }
           setState(() {});
         });
       }
@@ -134,8 +150,14 @@ class _HomeFeedScreenState extends ConsumerState<HomeFeedScreen>
 
   void _toggleMute() {
     setState(() => _isMuted = !_isMuted);
-    for (var i = _currentIndex - 1; i <= _currentIndex + 1; i++) {
-      _controllerCache.controllerAt(i)?.setVolume(_isMuted ? 0 : 1);
+    final videos = ref.read(feedProvider).asData?.value.videos ?? const [];
+    for (var i = _currentIndex - 1; i <= _currentIndex +  1; i++) {
+      if (i < 0 || i >= videos.length) continue;
+      final post = videos[i];
+      _controllerCache.controllerAt(i)?.setVolume(_isMuted
+          ? 0
+          : (post.muteOriginalAudio == true && post.musicUrl != null ? 0 : 1));
+      _controllerCache.setMusicVolume(i, _isMuted ? 0 : (post.musicVolume ?? 1));
     }
   }
 
@@ -256,6 +278,7 @@ class _HomeFeedScreenState extends ConsumerState<HomeFeedScreen>
     // short-video apps behave, and avoids audio continuing to play
     // "under" the comments UI.
     _controllerCache.controllerAt(_currentIndex)?.pause();
+    _controllerCache.pauseMusic(_currentIndex);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,

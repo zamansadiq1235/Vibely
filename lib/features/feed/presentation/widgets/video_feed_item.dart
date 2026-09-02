@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../domain/entities/video_post.dart';
+import '../../../upload/domain/entities/video_animation_preset.dart';
 import '../../../upload/domain/entities/video_filter_preset.dart';
 import 'video_action_bar.dart';
 import 'video_caption_overlay.dart';
@@ -87,6 +88,7 @@ class _VideoFeedItemState extends State<VideoFeedItem>
   bool? _cachedHasError;
 
   late final AnimationController _heartAnim;
+  AnimationController? _animController;
   bool _showHeartPop = false;
 
   @override
@@ -96,6 +98,7 @@ class _VideoFeedItemState extends State<VideoFeedItem>
       vsync: this,
       duration: const Duration(milliseconds: 500),
     );
+    _syncAnimationPreset();
     widget.controller?.addListener(_onControllerTick);
   }
 
@@ -115,6 +118,7 @@ class _VideoFeedItemState extends State<VideoFeedItem>
       _seekFeedbackTimer?.cancel();
       _seekFeedbackSeconds = null;
     }
+    _syncAnimationPreset();
   }
 
   /// Keeps the overlay layer (center play arrow, control-row icon) honest
@@ -154,6 +158,7 @@ class _VideoFeedItemState extends State<VideoFeedItem>
       widget.controller?.removeListener(_onControllerTick);
     } catch (_) {}
     _heartAnim.dispose();
+    _animController?.dispose();
     super.dispose();
   }
 
@@ -296,9 +301,13 @@ class _VideoFeedItemState extends State<VideoFeedItem>
               Center(
                 child: AspectRatio(
                   aspectRatio: controller.value.aspectRatio,
-                  // Re-applies the color-grade picked in the composer's
-                  // Filter step when one was saved on this post.
-                  child: _applyFilter(child: VideoPlayer(controller)),
+                  // Re-applies the color grade picked in the composer's Filter
+                  // step and drives the motion preset chosen in the Animations
+                  // rail the same way.
+                  child: _applyAnimation(
+                    t: _animController?.value ?? 0,
+                    child: _applyFilter(child: VideoPlayer(controller)),
+                  ),
                 ),
               ),
 
@@ -424,6 +433,39 @@ class _VideoFeedItemState extends State<VideoFeedItem>
               child: VideoCaptionOverlay(post: widget.post),
             ),
 
+            // Background-music badge (track chosen in the composer's Music step).
+            if (widget.post.musicTitle != null)
+              Positioned(
+                top: 8,
+                left: 8,
+                child: SafeArea(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.white24),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.music_note_rounded, color: Colors.white, size: 12),
+                        const SizedBox(width: 5),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 140),
+                          child: Text(
+                            widget.post.musicTitle!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
             // Progress bar
             if (ready)
               Positioned(
@@ -448,6 +490,38 @@ class _VideoFeedItemState extends State<VideoFeedItem>
   }
 
   // ---------- Overlay widgets ----------
+
+  /// Drives the composer's chosen motion preset with a looping AnimationController
+  /// (same metadata-only pattern as the filter re-application below). The
+  /// controller is recycled whenever the post's `animation_preset` changes.
+
+  void _syncAnimationPreset() {
+    final preset = VideoAnimationPreset.byId(widget.post.animationPresetId);
+    if (preset == null || preset.kind == VideoAnimationKind.none) {
+      _animController?.dispose();
+      _animController = null;
+      return;
+    }
+    if (_animController != null && _animController!.duration == preset.duration) {
+      if (!_animController!.isAnimating) _animController!.repeat();
+      return;
+    }
+    _animController?.dispose();
+    final anim = AnimationController(vsync: this, duration: preset.duration);
+    _animController = anim;
+    anim.repeat();
+  }
+
+  /// Wraps [child] (the filtered video) with the post's motion preset at the
+  /// current loop position. Touches nothing when the post has no animation.
+
+  Widget _applyAnimation({required Widget child, required double t}) {
+    final preset = VideoAnimationPreset.byId(widget.post.animationPresetId);
+    if (preset == null || preset.id == VideoAnimationPreset.none.id || _animController == null) {
+      return child;
+    }
+    return preset.wrap(child: child, t: t);
+  }
 
   /// Wraps [child] in the post's saved color-grade matrix when it has
   /// one; returns the child untouched for original/no-filter uploads.

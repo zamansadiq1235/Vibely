@@ -22,4 +22,7 @@ class AppConstants {
   static const String avatarsBucket = 'avatars';
   static const String videosBucket = 'videos';
   static const String thumbnailsBucket = 'thumbnails';
+
+  // MusicAPI — real-time song search/metadata/audio stream (upload Music step.
+  static const String musicApiBaseUrl = 'https://bhindi1.ddns.net/music/api';
 }

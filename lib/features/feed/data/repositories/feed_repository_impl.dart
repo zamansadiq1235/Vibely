@@ -37,6 +37,9 @@ class FeedRepositoryImpl implements FeedRepository {
         filterPresetId: row['filter_preset'] as String?,
         musicTitle: row['music_title'] as String?,
         musicUrl: row['music_url'] as String?,
+        musicVolume: (row['music_volume'] as num?)?.toDouble(),
+        muteOriginalAudio: row['mute_original_audio'] as bool?,
+        animationPresetId: row['animation_preset'] as String?,
         createdAt: DateTime.parse(row['created_at'] as String),
       );
     }).toList();
