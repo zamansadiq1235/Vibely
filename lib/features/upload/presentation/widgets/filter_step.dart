@@ -21,7 +21,7 @@ class FilterStep extends ConsumerStatefulWidget {
 }
 
 class _FilterStepState extends ConsumerState<FilterStep>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   VideoPlayerController? _controller;
   bool _initError = false;
   AnimationController? _animController;

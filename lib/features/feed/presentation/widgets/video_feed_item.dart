@@ -61,7 +61,7 @@ class VideoFeedItem extends StatefulWidget {
 }
 
 class _VideoFeedItemState extends State<VideoFeedItem>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   // ---------- Playback controls ----------
   static const int _skipSeconds = 5;
   static const double _fastForwardSpeed = 2.0;
